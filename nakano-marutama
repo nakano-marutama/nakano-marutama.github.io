@@ -1,10 +1,23 @@
 <!DOCTYPE html>
 <html>
 <head>
+<meta charset="UTF-8">
+<title>スケジュール確認</title>
 <style>
     /* ページの表示を整えるためのCSS */
     body { font-family: sans-serif; margin: 20px; }
     h1 { color: #333; }
+    /* 更新ボタンのスタイル */
+    #reloadButton {
+        padding: 10px 20px;
+        font-size: 16px;
+        cursor: pointer;
+        margin-bottom: 20px;
+        background-color: #4CAF50;
+        color: white;
+        border: none;
+        border-radius: 5px;
+    }
     table { border-collapse: collapse; width: 100%; max-width: 1200px; margin: 20px 0; }
     th, td { border: 1px solid #ccc; padding: 8px; text-align: center; font-size: 11pt; white-space: nowrap; } 
     /* ヘッダー固定 */
@@ -21,15 +34,23 @@
 </style>
 </head>
 <body>
-    <h1>読み込み中...</h1>
+    <h1 id="mainTitle">スケジュールを読み込み中...</h1>
+    
+    <button id="reloadButton">🔄 スケジュールを更新</button>
+
     <div id="scheduleTable">データを読み込み中...</div>
 
 <script>
     // 🌟 【重要】ウェブに公開したCSV形式のURLに置き換えてください
     const PUBLIC_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSwCeHjOxhWiJlqesbnn4jQ-sL01WKbu0ynyV_spXfBRLUBsjKaX0mFumn_J6NDgHtTnwM9TEp5EBTe/pub?gid=0&single=true&output=csv'; 
-
-    // ページが読み込まれたら、公開 CSV のデータを読み込む
-    window.onload = function() {
+    
+    // ----------------------------------------------------------------------
+    // ページロード時とボタンクリック時に実行されるメインの処理を関数化
+    // ----------------------------------------------------------------------
+    function fetchDataAndDisplay() {
+        document.getElementById('mainTitle').textContent = 'データを読み込み中...';
+        document.getElementById('scheduleTable').innerHTML = 'データを読み込み中...';
+        
         fetchDataFromCSV(PUBLIC_CSV_URL)
             .then(data => {
                 if (data.error) {
@@ -41,6 +62,14 @@
             .catch(error => {
                 showError({ message: `データの読み込みに失敗しました: ${error.message}` });
             });
+    }
+
+    // ページが読み込まれたら、公開 CSV のデータを読み込む
+    window.onload = function() {
+        fetchDataAndDisplay();
+        
+        // 更新ボタンにイベントリスナーを設定
+        document.getElementById('reloadButton').addEventListener('click', fetchDataAndDisplay);
     };
 
     /**
@@ -55,14 +84,12 @@
             const csvText = await response.text();
 
             // CSVを行と列に分割（非常にシンプルなパース処理）
-            // 注意: セル内にカンマが含まれると正確にパースできませんが、元のGASロジックを模倣します。
             const rows = csvText.trim().split('\n').map(row => row.split(','));
             
             if (rows.length < 6) {
-                 return { error: 'CSVデータが期待される行数に満たないため、パースできませんでした。スプレッドシートが正しく公開されているか確認してください。' };
+                return { error: 'CSVデータが期待される行数に満たないため、パースできませんでした。スプレッドシートが正しく公開されているか確認してください。' };
             }
 
-            // データの取得ロジック（元のGASのgetScheduleData()をエミュレート）
             // B1 (rows[0][1]) が月度
             const monthValue = rows[0][1].trim(); 
             // A4:AF4 (rows[3]) が日付ヘッダー
@@ -100,7 +127,7 @@
         }
         
         // タイトルを更新 (B1セルの値を使用)
-        document.querySelector('h1').textContent = `${scheduleData.month} 休み希望確認`; 
+        document.getElementById('mainTitle').textContent = `${scheduleData.month} 休み希望確認`; 
         
         let html = '<table><thead>';
         
@@ -148,6 +175,7 @@
      * データの取得に失敗した場合にエラーを表示する関数
      */
     function showError(error) {
+        document.getElementById('mainTitle').textContent = '🚨 データ取得エラー';
         document.getElementById('scheduleTable').innerHTML = 
             `<p style="color: red; font-size: 14pt;">🚨 データ取得エラーが発生しました 🚨</p>
              <p>以下の点を確認してください:</p>
