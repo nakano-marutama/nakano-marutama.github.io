@@ -1,7 +1,6 @@
 <!DOCTYPE html>
 <html>
 <head>
-<base target="_top">
 <style>
     /* ページの表示を整えるためのCSS */
     body { font-family: sans-serif; margin: 20px; }
