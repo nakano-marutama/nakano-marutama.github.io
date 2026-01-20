@@ -4,10 +4,8 @@
 <meta charset="UTF-8">
 <title>スケジュール確認</title>
 <style>
-    /* ページの表示を整えるためのCSS */
     body { font-family: sans-serif; margin: 20px; }
     h1 { color: #333; }
-    /* 更新ボタンのスタイル */
     #reloadButton {
         padding: 10px 20px;
         font-size: 16px;
@@ -20,15 +18,9 @@
     }
     table { border-collapse: collapse; width: 100%; max-width: 1200px; margin: 20px 0; }
     th, td { border: 1px solid #ccc; padding: 8px; text-align: center; font-size: 11pt; white-space: nowrap; } 
-    /* ヘッダー固定 */
     th { background-color: #e0e0e0; position: sticky; top: 0; z-index: 10; } 
-    
-    /* 一番左の列のスタイル（中央揃え） */
     .name-cell { text-align: center; font-weight: bold; } 
-    
-    /* 休み（/）のセルを強調 */
     .vacation-cell { background-color: #ffdddd; font-weight: bold; } 
-    /* 日付行のヘッダー色 */
     .date-row th { 
         background-color: #cccccc; 
         padding-top: 4px; 
@@ -44,10 +36,8 @@
     <div id="scheduleTable">データを読み込み中...</div>
 
 <script>
-    // 🌟 ウェブに公開したCSV形式のURL
-    const PUBLIC_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSyErOQl5eRjOsCvSthxVrKvFmKhsHhdvlBngpAatcMOC4Cn1NP673R51kNx7QgJFD9t3lx33XOvP8Z/pub?gid=1072672730&single=true&output=csv'; 
+    const PUBLIC_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vT20u42P9--VV9FuP3y0JpMiqZyAAyDWgmn-EcW5Hnacjm0wjT8kIb2dVOLLzLXTbqWmzR-vGplYxF-/pub?gid=0&single=true&output=csv'; 
     
-    // 🌟 表示する列の数 (ヘッダー2列 + 31日分 = 33列)
     const DISPLAY_COL_COUNT = 33;
 
     function fetchDataAndDisplay() {
@@ -86,13 +76,19 @@
                 return { error: 'CSVデータの行数が足りません。' };
             }
 
-            // 【修正箇所】月度を B2 (rows[1][1]) から取得するように変更
             const monthValue = rows[1][1] ? rows[1][1].trim() : ""; 
-            
             const dateHeader = rows[3].map(cell => cell.trim()); 
             const header = rows[4].map(cell => cell.trim()); 
+            
+            // 【修正箇所】データ本体のフィルタリング
             const dataBody = rows.slice(5) 
-                .filter(row => row[1] && row[1].trim() !== '') 
+                .filter(row => {
+                    const firstCell = row[0] ? row[0].trim() : "";
+                    const nameCell = row[1] ? row[1].trim() : "";
+                    // 1. 名前(B列)が空でないこと
+                    // 2. 1列目に「総労働時間」という文字が含まれていないこと
+                    return nameCell !== '' && !firstCell.includes("総労働時間");
+                })
                 .map(row => row.map(cell => cell.trim()));
 
             return {
@@ -108,33 +104,27 @@
 
     function displayData(scheduleData) {
         const tableDiv = document.getElementById('scheduleTable');
-        
-        // タイトルを「〇月度 休み希望確認」に変更
         document.getElementById('mainTitle').textContent = `${scheduleData.month}度 休み希望確認`; 
         
         let html = '<table><thead>';
         
-        // 日付ヘッダー
         html += '<tr class="date-row">';
         scheduleData.dateHeader.slice(0, DISPLAY_COL_COUNT).forEach(d => {
             html += `<th>${d || ''}</th>`;
         });
         html += '</tr>';
 
-        // 曜日・項目ヘッダー
         html += '<tr>';
         scheduleData.header.slice(0, DISPLAY_COL_COUNT).forEach(h => {
             html += `<th>${h || ''}</th>`;
         });
         html += '</tr></thead><tbody>';
         
-        // データ本体
         scheduleData.data.forEach(row => {
             html += '<tr>';
             row.slice(0, DISPLAY_COL_COUNT).forEach((cell, cellIndex) => {
                 const cellTextStr = cell.toString();
                 
-                // 1列目と2列目(職種と名前)に.name-cellクラスを適用
                 if (cellIndex === 0 || cellIndex === 1) {
                     html += `<td class="name-cell">${cellTextStr}</td>`;
                 } else {
