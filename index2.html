@@ -5,80 +5,101 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>スケジュール確認</title>
     <style>
-        body { font-family: sans-serif; margin: 20px; background-color: #f9f9f9; }
-        h1 { color: #333; font-size: 1.5rem; margin-bottom: 10px; }
-        #reloadButton {
-            padding: 10px 20px; font-size: 16px; cursor: pointer; margin-bottom: 20px;
-            background-color: #4CAF50; color: white; border: none; border-radius: 5px;
-        }
-        .table-container { overflow-x: auto; border: 1px solid #ccc; background-color: white; }
-        table { border-collapse: collapse; width: 100%; }
-        th, td { border: 1px solid #ccc; padding: 6px 8px; text-align: center; font-size: 10pt; white-space: nowrap; } 
-        th { background-color: #e0e0e0; position: sticky; top: 0; z-index: 10; } 
-        .date-row th { background-color: #cccccc; } 
-        .name-cell { text-align: left; font-weight: bold; background-color: #fdfdfd; padding-left: 15px; } 
-        .vacation-cell { background-color: #ffdddd; font-weight: bold; color: #d32f2f; }
-        /* 合計行（総労働時間）を目立たせる */
-        .total-row { background-color: #eee; font-weight: bold; }
+        body { font-family: "Helvetica Neue", Arial, "Hiragino Kaku Gothic ProN", "Hiragino Sans", sans-serif; margin: 20px; background-color: #f4f7f6; color: #333; }
+        h1 { font-size: 1.4rem; color: #2c3e50; border-left: 6px solid #4CAF50; padding: 5px 15px; margin-bottom: 20px; background: white; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+        #reloadButton { padding: 10px 20px; font-size: 15px; cursor: pointer; margin-bottom: 20px; background-color: #4CAF50; color: white; border: none; border-radius: 4px; transition: 0.2s; }
+        #reloadButton:hover { background-color: #45a049; }
+        .table-container { overflow-x: auto; background: white; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); border: 1px solid #ddd; }
+        table { border-collapse: collapse; width: 100%; white-space: nowrap; }
+        th, td { border: 1px solid #eee; padding: 8px 6px; text-align: center; font-size: 12px; }
+        /* ヘッダー固定 */
+        thead th { background-color: #f8f9fa; position: sticky; top: 0; z-index: 10; border-bottom: 2px solid #ddd; }
+        .date-row th { background-color: #e9ecef; font-weight: bold; }
+        /* 氏名列固定 */
+        .sticky-col { position: sticky; left: 0; background-color: #fff; z-index: 5; border-right: 2px solid #ddd !important; }
+        th.sticky-col { z-index: 15; background-color: #f8f9fa; }
+        /* セル状態 */
+        .name-cell { text-align: left; font-weight: bold; min-width: 120px; }
+        .vacation-cell { background-color: #ffebee !important; color: #c62828; font-weight: bold; }
+        .total-row { background-color: #f1f3f5; font-weight: bold; }
+        tr:hover td { background-color: #f8f9fa; }
     </style>
 </head>
 <body>
-    <h1 id="mainTitle">データを読み込み中...</h1>
-    <button id="reloadButton">🔄 スケジュールを更新</button>
+    <h1 id="mainTitle">スケジュールを取得中...</h1>
+    <button id="reloadButton" onclick="loadSchedule()">🔄 データを更新</button>
 
     <div class="table-container">
-        <div id="scheduleTable"></div>
+        <div id="scheduleTable">データを読み込み中...</div>
     </div>
 
 <script>
-    const PUBLIC_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vT20u42P9--VV9FuP3y0JpMiqZyAAyDWgmn-EcW5Hnacjm0wjT8kIb2dVOLLzLXTbqWmzR-vGplYxF-/pub?gid=0&single=true&output=csv'; 
+    // 新しいCSV URL
+    const CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSyErOQl5eRjOsCvSthxVrKvFmKhsHhdvlBngpAatcMOC4Cn1NP673R51kNx7QgJFD9t3lx33XOvP8Z/pub?gid=0&single=true&output=csv';
 
-    async function fetchDataAndDisplay() {
+    async function loadSchedule() {
         const titleEl = document.getElementById('mainTitle');
         const tableEl = document.getElementById('scheduleTable');
-        titleEl.textContent = '読み込み中...';
-
+        
         try {
-            const response = await fetch(`${PUBLIC_CSV_URL}&t=${new Date().getTime()}`);
+            const response = await fetch(`${CSV_URL}&t=${new Date().getTime()}`);
             const csvText = await response.text();
-            const rows = csvText.trim().split(/\r?\n/).map(row => row.split(','));
+            const rows = csvText.trim().split('\n').map(r => r.split(',').map(c => c.trim()));
 
-            // --- 1. タイトル取得 (A2 と B2) ---
-            const yearText = rows[1][0] ? rows[1][0].trim() : "";
-            const monthText = rows[1][1] ? rows[1][1].trim() : "";
-            titleEl.textContent = `${yearText} ${monthText} 休み希望確認`;
+            // --- インテリジェント解析 ---
+            let titleText = "休み希望確認";
+            let dateIdx = -1;
+            
+            for (let i = 0; i < rows.length; i++) {
+                const rowStr = rows[i].join('');
+                // 年月が含まれる行を特定
+                if (rowStr.includes('年') && rowStr.includes('月度')) {
+                    const year = rows[i].find(c => c.includes('年')) || "";
+                    const month = rows[i].find(c => c.includes('月度')) || "";
+                    titleText = `${year} ${month} 休み希望確認`;
+                }
+                // 日付行（21から始まる行）を特定
+                if (dateIdx === -1 && rows[i].includes('21')) {
+                    dateIdx = i;
+                }
+            }
+            titleEl.textContent = titleText;
 
-            // --- 2. テーブル生成 ---
-            // 列数はデータの最大数に合わせる（固定値33を廃止）
-            const maxCols = rows[3].length;
+            if (dateIdx === -1) throw new Error("日付行が見つかりません");
 
+            const dayIdx = dateIdx + 1; // 曜日は日付の次の行
+            const dataStartIdx = dateIdx + 3; // 「行事予定」を飛ばしてデータ開始
+
+            // --- テーブル構築 ---
             let html = '<table><thead>';
             
-            // 日付行 (rows[3])
+            // 1. 日付行
             html += '<tr class="date-row">';
-            rows[3].forEach(cell => html += `<th>${cell || ''}</th>`);
+            rows[dateIdx].forEach((cell, idx) => {
+                const sticky = idx === 1 ? 'sticky-col' : '';
+                html += `<th class="${sticky}">${cell || ''}</th>`;
+            });
             html += '</tr>';
 
-            // 曜日行 (rows[4])
+            // 2. 曜日行
             html += '<tr>';
-            rows[4].forEach(cell => html += `<th>${cell || ''}</th>`);
+            rows[dayIdx].forEach((cell, idx) => {
+                const sticky = idx === 1 ? 'sticky-col' : '';
+                html += `<th class="${sticky}">${cell || ''}</th>`;
+            });
             html += '</tr></thead><tbody>';
 
-            // データ本体 (rows[5]以降)
-            const bodyRows = rows.slice(5).filter(row => row[1] && row[1].trim() !== "");
-
-            bodyRows.forEach(row => {
-                const isTotalRow = row[0].includes("総労働時間");
-                html += `<tr class="${isTotalRow ? 'total-row' : ''}">`;
-                
+            // 3. データ行
+            const dataRows = rows.slice(dataStartIdx).filter(r => r[1]); // 名前がある行のみ
+            dataRows.forEach(row => {
+                const isTotal = row[0].includes("総労働時間");
+                html += `<tr class="${isTotal ? 'total-row' : ''}">`;
                 row.forEach((cell, idx) => {
-                    const text = cell ? cell.trim() : "";
-                    if (idx === 0 || idx === 1) {
-                        html += `<td class="name-cell">${text}</td>`;
-                    } else {
-                        const style = text === "/" ? ' class="vacation-cell"' : '';
-                        html += `<td${style}>${text}</td>`;
-                    }
+                    let className = "";
+                    if (idx === 1) className = "name-cell sticky-col";
+                    if (cell === "/") className += " vacation-cell";
+                    
+                    html += `<td class="${className}">${cell || ''}</td>`;
                 });
                 html += '</tr>';
             });
@@ -87,13 +108,12 @@
             tableEl.innerHTML = html;
 
         } catch (e) {
-            titleEl.textContent = '🚨 エラー';
-            tableEl.innerHTML = `<p style="color:red">${e.message}</p>`;
+            titleEl.textContent = "読み込みエラー";
+            tableEl.innerHTML = `<p style="padding:20px; color:red;">エラー詳細: ${e.message}<br>スプレッドシートの「ウェブに公開(CSV)」が正しく設定されているか確認してください。</p>`;
         }
     }
 
-    window.onload = fetchDataAndDisplay;
-    document.getElementById('reloadButton').addEventListener('click', fetchDataAndDisplay);
+    window.onload = loadSchedule;
 </script>
 </body>
 </html>
