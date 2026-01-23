@@ -1,48 +1,64 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-<meta charset="UTF-8">
-<title>スケジュール確認</title>
-<style>
-    body { font-family: sans-serif; margin: 20px; }
-    h1 { color: #333; }
-    #reloadButton {
-        padding: 10px 20px;
-        font-size: 16px;
-        cursor: pointer;
-        margin-bottom: 20px;
-        background-color: #4CAF50;
-        color: white;
-        border: none;
-        border-radius: 5px;
-    }
-    table { border-collapse: collapse; width: 100%; max-width: 1200px; margin: 20px 0; }
-    th, td { border: 1px solid #ccc; padding: 8px; text-align: center; font-size: 11pt; white-space: nowrap; } 
-    th { background-color: #e0e0e0; position: sticky; top: 0; z-index: 10; } 
-    .name-cell { text-align: center; font-weight: bold; } 
-    .vacation-cell { background-color: #ffdddd; font-weight: bold; } 
-    .date-row th { 
-        background-color: #cccccc; 
-        padding-top: 4px; 
-        padding-bottom: 4px;
-    } 
-</style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>スケジュール確認</title>
+    <style>
+        body { font-family: sans-serif; margin: 20px; background-color: #f9f9f9; }
+        h1 { color: #333; font-size: 1.5rem; }
+        #reloadButton {
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+            margin-bottom: 20px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            transition: background-color 0.3s;
+        }
+        #reloadButton:hover { background-color: #45a049; }
+        
+        /* テーブルのスタイリング */
+        .table-container { overflow-x: auto; border: 1px solid #ccc; }
+        table { border-collapse: collapse; width: 100%; min-width: 800px; background-color: white; }
+        th, td { border: 1px solid #ccc; padding: 8px; text-align: center; font-size: 11pt; white-space: nowrap; } 
+        
+        /* ヘッダー固定 */
+        th { background-color: #e0e0e0; position: sticky; top: 0; z-index: 10; } 
+        .date-row th { background-color: #cccccc; padding-top: 4px; padding-bottom: 4px; } 
+
+        /* セル固有のスタイル */
+        .name-cell { text-align: center; font-weight: bold; background-color: #fdfdfd; } 
+        .vacation-cell { background-color: #ffdddd; font-weight: bold; color: #d32f2f; } 
+    </style>
 </head>
 <body>
     <h1 id="mainTitle">スケジュールを読み込み中...</h1>
     
     <button id="reloadButton">🔄 スケジュールを更新</button>
 
-    <div id="scheduleTable">データを読み込み中...</div>
+    <div class="table-container">
+        <div id="scheduleTable">データを読み込み中...</div>
+    </div>
 
 <script>
+    // スプレッドシート公開URL
     const PUBLIC_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vT20u42P9--VV9FuP3y0JpMiqZyAAyDWgmn-EcW5Hnacjm0wjT8kIb2dVOLLzLXTbqWmzR-vGplYxF-/pub?gid=0&single=true&output=csv'; 
     
+    // 表示する列数（1ヶ月分＋氏名等）
     const DISPLAY_COL_COUNT = 33;
 
+    /**
+     * CSVデータを取得して表示するメイン関数
+     */
     function fetchDataAndDisplay() {
-        document.getElementById('mainTitle').textContent = 'データを読み込み中...';
-        document.getElementById('scheduleTable').innerHTML = 'データを読み込み中...';
+        const titleEl = document.getElementById('mainTitle');
+        const tableEl = document.getElementById('scheduleTable');
+        
+        titleEl.textContent = 'データを読み込み中...';
+        tableEl.innerHTML = 'データを読み込み中...';
         
         fetchDataFromCSV(PUBLIC_CSV_URL)
             .then(data => {
@@ -53,83 +69,92 @@
                 }
             })
             .catch(error => {
-                showError({ message: `データの読み込みに失敗しました: ${error.message}` });
+                showError({ message: `接続エラー: ${error.message}` });
             });
     }
 
-    window.onload = function() {
-        fetchDataAndDisplay();
-        document.getElementById('reloadButton').addEventListener('click', fetchDataAndDisplay);
-    };
-
+    /**
+     * CSVパース処理
+     */
     async function fetchDataFromCSV(url) {
         try {
+            // キャッシュ回避のためのタイムスタンプ付与
             const finalUrl = url + `&t=${new Date().getTime()}`;
             const response = await fetch(finalUrl);
-            if (!response.ok) {
-                throw new Error(`HTTPエラー: ${response.status}`);
-            }
+            if (!response.ok) throw new Error(`HTTPエラー: ${response.status}`);
+
             const csvText = await response.text();
+            // 行と列に分解
             const rows = csvText.trim().split(/\r?\n/).map(row => row.split(','));
             
-            if (rows.length < 6) {
-                return { error: 'CSVデータの行数が足りません。' };
-            }
+            if (rows.length < 6) return { error: 'データ構造が正しくありません。' };
 
-            const monthValue = rows[1][1] ? rows[1][1].trim() : ""; 
+            // 【修正ポイント】A2(年) と B2(月度) を結合
+            const yearPart = rows[1][0] ? rows[1][0].trim() : "";
+            const monthPart = rows[1][1] ? rows[1][1].trim() : "";
+            const fullTitle = `${yearPart} ${monthPart}`; // 例: "2026年 03月度"
+
             const dateHeader = rows[3].map(cell => cell.trim()); 
             const header = rows[4].map(cell => cell.trim()); 
             
-            // 【修正箇所】データ本体のフィルタリング
             const dataBody = rows.slice(5) 
                 .filter(row => {
                     const firstCell = row[0] ? row[0].trim() : "";
                     const nameCell = row[1] ? row[1].trim() : "";
-                    // 1. 名前(B列)が空でないこと
-                    // 2. 1列目に「総労働時間」という文字が含まれていないこと
+                    // 名前があり、かつ集計行でないものを抽出
                     return nameCell !== '' && !firstCell.includes("総労働時間");
                 })
                 .map(row => row.map(cell => cell.trim()));
 
             return {
-                month: monthValue, 
+                month: fullTitle, 
                 dateHeader: dateHeader, 
                 header: header, 
                 data: dataBody 
             };
         } catch (e) {
-            return { error: `CSVパースエラー: ${e.message}` };
+            return { error: `取得失敗: ${e.message}` };
         }
     }
 
+    /**
+     * HTMLテーブル描画処理
+     */
     function displayData(scheduleData) {
         const tableDiv = document.getElementById('scheduleTable');
-        document.getElementById('mainTitle').textContent = `${scheduleData.month}度 休み希望確認`; 
+        // タイトル表示
+        document.getElementById('mainTitle').textContent = `${scheduleData.month} 休み希望確認`; 
         
         let html = '<table><thead>';
         
+        // 1行目: 日付 (rows[3])
         html += '<tr class="date-row">';
         scheduleData.dateHeader.slice(0, DISPLAY_COL_COUNT).forEach(d => {
             html += `<th>${d || ''}</th>`;
         });
         html += '</tr>';
 
+        // 2行目: 曜日 (rows[4])
         html += '<tr>';
         scheduleData.header.slice(0, DISPLAY_COL_COUNT).forEach(h => {
             html += `<th>${h || ''}</th>`;
         });
         html += '</tr></thead><tbody>';
         
+        // データ行
         scheduleData.data.forEach(row => {
             html += '<tr>';
             row.slice(0, DISPLAY_COL_COUNT).forEach((cell, cellIndex) => {
-                const cellTextStr = cell.toString();
+                const cellText = cell.toString();
                 
+                // A列(ID等)とB列(氏名)は強調
                 if (cellIndex === 0 || cellIndex === 1) {
-                    html += `<td class="name-cell">${cellTextStr}</td>`;
+                    html += `<td class="name-cell">${cellText}</td>`;
                 } else {
-                    const cellClass = cellTextStr === '/' ? ' class="vacation-cell"' : ''; 
-                    html += `<td${cellClass}>${cellTextStr}</td>`; 
+                    // スラッシュ「/」が入っているセルは休みとして色付け
+                    const isVacation = cellText === '/';
+                    const cellClass = isVacation ? ' class="vacation-cell"' : ''; 
+                    html += `<td${cellClass}>${cellText}</td>`; 
                 }
             });
             html += '</tr>';
@@ -139,10 +164,19 @@
         tableDiv.innerHTML = html;
     }
     
+    /**
+     * エラー表示処理
+     */
     function showError(error) {
-        document.getElementById('mainTitle').textContent = '🚨 データ取得エラー';
-        document.getElementById('scheduleTable').innerHTML = `<p style="color: red;">エラー: ${error.message}</p>`;
+        document.getElementById('mainTitle').textContent = '🚨 エラー';
+        document.getElementById('scheduleTable').innerHTML = `<p style="color: red; font-weight: bold;">${error.message}</p>`;
     }
+
+    // 初回読み込み
+    window.onload = function() {
+        fetchDataAndDisplay();
+        document.getElementById('reloadButton').addEventListener('click', fetchDataAndDisplay);
+    };
 </script>
 </body>
 </html>
