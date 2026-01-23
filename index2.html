@@ -90,17 +90,17 @@
                 return { error: 'CSVデータが期待される行数に満たないため、パースできませんでした。スプレッドシートが正しく公開されているか確認してください。' };
             }
 
-            // B1 (rows[0][1]) が月度
-            const monthValue = rows[0][1].trim(); 
-            // A4:AF4 (rows[3]) が日付ヘッダー
-            const dateHeader = rows[3].map(cell => cell.trim()); 
-            // A5:AF5 (rows[4]) が曜日ヘッダー
-            const header = rows[4].map(cell => cell.trim()); 
+            // B2 (rows[1][1]) が月度
+            const monthValue = rows[1][1].trim(); 
+            // A5:AF5 (rows[3]) が日付ヘッダー
+            const dateHeader = rows[4].map(cell => cell.trim()); 
+            // A6:AF6 (rows[4]) が曜日ヘッダー
+            const header = rows[5].map(cell => cell.trim()); 
             
-            // A6以降 (rows.slice(5)) がデータ本体
-            const dataBody = rows.slice(5) 
-                // 1列目（氏名）が空の行をフィルタリング
-                .filter(row => row[0] && row[0].trim() !== '')
+            // A7以降 (rows.slice(6)) がデータ本体
+            const dataBody = rows.slice(6) 
+                // 2列目（名前）に文字がある行だけ出す
+                .filter(row => row[1] && row[1].trim() !== '')
                 // 全てのセルをトリミング
                 .map(row => row.map(cell => cell.trim()));
 
@@ -126,12 +126,12 @@
             return;
         }
         
-        // タイトルを更新 (B1セルの値を使用)
+        // タイトルを更新 (B2セルの値を使用)
         document.getElementById('mainTitle').textContent = `${scheduleData.month} 休み希望確認`; 
         
         let html = '<table><thead>';
         
-        // 日付ヘッダー行 (A4から取得したデータ)
+        // 日付ヘッダー行 (A5から取得したデータ)
         html += '<tr class="date-row">';
         scheduleData.dateHeader.forEach(d => {
             const displayValue = d || '';
