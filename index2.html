@@ -22,8 +22,7 @@
     .name-cell { text-align: left; font-weight: bold; }
 
     /* 🌟 色の定義（CSS） */
-    .vacation-cell { background-color: #ffdddd; font-weight: bold; } /* / の色（薄い赤） */
-    .batsu-cell { background-color: #eee0ff; font-weight: bold; }    /* × の色（薄い紫） */
+    .vacation-cell { background-color: #ffdddd; font-weight: bold; }    /* / と × の色（薄い赤） */
     .paid-holiday-cell { background-color: #d0f0d0; font-weight: bold; } /* 有休の色（薄い緑） */
 
     .date-row th { background-color: #cccccc; padding-top: 4px; padding-bottom: 4px; }
@@ -62,6 +61,9 @@
         document.getElementById('reloadButton').addEventListener('click', fetchDataAndDisplay);
     };
 
+    /**
+     * 引用符と改行を考慮したCSVパース
+     */
     async function fetchDataFromCSV(url) {
         try {
             const response = await fetch(url + (url.indexOf('?') > -1 ? '&t=' : '?t=') + Date.now());
@@ -146,12 +148,11 @@
                 if (cellIndex === 1) {
                     html += `<td class="name-cell">${cellDisplayStr}</td>`;
                 } else {
-                    // 🌟 文字列に応じたクラスの判定（JavaScript）
+                    // 🌟 背景色の条件分岐
                     let cellClass = '';
-                    if (cellTextStr === '/') {
+                    if (cellTextStr === '/' || cellTextStr === '×') {
+                        // / と × を同じ赤系（vacation-cell）に設定
                         cellClass = ' class="vacation-cell"';
-                    } else if (cellTextStr === '×') {
-                        cellClass = ' class="batsu-cell"';
                     } else if (cellTextStr === '有休') {
                         cellClass = ' class="paid-holiday-cell"';
                     }
