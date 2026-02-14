@@ -41,6 +41,7 @@
     <div id="scheduleTable">データを読み込み中...</div>
 
 <script>
+    // 🌟 【重要】ウェブに公開したCSV形式のURL
     const PUBLIC_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSyErOQl5eRjOsCvSthxVrKvFmKhsHhdvlBngpAatcMOC4Cn1NP673R51kNx7QgJFD9t3lx33XOvP8Z/pub?gid=1072672730&single=true&output=csv'; 
     
     function fetchDataAndDisplay() {
@@ -65,34 +66,12 @@
         document.getElementById('reloadButton').addEventListener('click', fetchDataAndDisplay);
     };
 
-    function parseCSV(text) {
-        const lines = [];
-        let inQuotes = false;
-        let start = 0;
-        for (let i = 0; i < text.length; i++) {
-            if (text[i] === '"') inQuotes = !inQuotes;
-            if (!inQuotes && (text.substring(i, i + 1) === '\n' || text.substring(i, i + 2) === '\r\n')) {
-                lines.push(text.substring(start, i));
-                start = i + (text[i] === '\r' ? 2 : 1);
-            }
-        }
-        lines.push(text.substring(start));
-
-        const re = /(?!\s*$)\s*(?:'([^']*)'|"([^"]*)"|([^,\r\n\t]*))\s*(?:,|$)/g;
-        return lines.map(line => {
-            const row = [];
-            let m;
-            re.lastIndex = 0; 
-            while (m = re.exec(line)) {
-                let val = m[1] || m[2] || m[3] || "";
-                row.push(val.trim());
-            }
-            return row;
-        });
-    }
-
+    /**
+     * CSVデータを取得し、スクショ2の成功ロジックをベースに解析する関数
+     */
     async function fetchDataFromCSV(url) {
         try {
+            // キャッシュ回避
             const cacheBuster = url.indexOf('?') > -1 ? `&t=${Date.now()}` : `?t=${Date.now()}`;
             const response = await fetch(url + cacheBuster);
             
@@ -100,63 +79,84 @@
                 throw new Error(`HTTPエラー: ${response.status}`);
             }
             const csvText = await response.text();
-            const rows = parseCSV(csvText);
+
+            // スクショ2と同じシンプルな行分割を採用
+            const rows = csvText.trim().split('\n').map(row => row.split(','));
             
             if (rows.length < 6) {
-                return { error: 'CSVの行数が足りません。' };
+                return { error: 'CSVデータの行数が足りません。' };
             }
 
-            // 【最終修正】文字化け対策：B2セル内の「数字」だけを抜き出して「月度」を付与
-            let monthLabel = "不明な月";
-            if (rows[1] && rows[1][1]) {
-                const numbersOnly = rows[1][1].replace(/[^0-9]/g, ''); // 数字以外をすべて消去
-                if (numbersOnly) {
-                    // 03などの頭のゼロを維持するために、数字があればそのまま採用
-                    monthLabel = numbersOnly.slice(-2) + "月度"; 
-                }
+            // 【修正】スクショ2の構造に合わせ、B1セル(rows[0][1])から月度を取得
+            // ただし、もし空ならB2セル(rows[1][1])を予備で見に行く
+            let monthValue = "不明な月";
+            if (rows[0] && rows[0][1] && rows[0][1].trim() !== "") {
+                monthValue = rows[0][1].trim();
+            } else if (rows[1] && rows[1][1] && rows[1][1].trim() !== "") {
+                monthValue = rows[1][1].trim();
+            }
+
+            // タイトル内の文字化け記号を除去して「XX月度」の形に整える
+            const match = monthValue.match(/\d+/);
+            if (match) {
+                monthValue = match[0].padStart(2, '0') + "月度";
             }
             
             const dateHeader = rows[4] ? rows[4].map(cell => cell.trim()) : []; 
             const header = rows[5] ? rows[5].map(cell => cell.trim()) : []; 
+            
             const dataBody = rows.slice(6) 
                 .filter(row => row[1] && row[1].trim() !== '')
                 .map(row => row.map(cell => cell.trim()));
 
-            return { month: monthLabel, dateHeader: dateHeader, header: header, data: dataBody };
+            return {
+                month: monthValue, 
+                dateHeader: dateHeader, 
+                header: header, 
+                data: dataBody 
+            };
+
         } catch (e) {
-            return { error: `エラー: ${e.message}` };
+            return { error: `CSVパースエラー: ${e.message}` };
         }
     }
 
     function displayData(scheduleData) {
         const tableDiv = document.getElementById('scheduleTable');
+        
         document.getElementById('mainTitle').textContent = `${scheduleData.month} 休み希望確認`; 
         
         let html = '<table><thead><tr class="date-row">';
-        scheduleData.dateHeader.forEach(d => html += `<th>${d || ''}</th>`);
+        scheduleData.dateHeader.forEach(d => {
+            html += `<th>${d || ''}</th>`;
+        });
         html += '</tr><tr>';
-        scheduleData.header.forEach(h => html += `<th>${h || ''}</th>`);
+        scheduleData.header.forEach(h => {
+            html += `<th>${h || ''}</th>`;
+        });
         html += '</tr></thead><tbody>';
         
         scheduleData.data.forEach(row => {
             html += '<tr>';
             row.forEach((cell, cellIndex) => {
-                const cellTextStr = cell.toString().replace(/\n/g, '<br>');
+                const cellTextStr = cell.toString().replace(/\n/g, '<br>').replace(/"/g, '');
+                
                 if (cellIndex === 0) {
                     html += `<td class="name-cell">${cellTextStr}</td>`;
                 } else {
-                    const cellClass = cell === '/' ? ' class="vacation-cell"' : ''; 
+                    const cellClass = cellTextStr === '/' ? ' class="vacation-cell"' : ''; 
                     html += `<td${cellClass}>${cellTextStr}</td>`; 
                 }
             });
             html += '</tr>';
         });
         html += '</tbody></table>';
+
         tableDiv.innerHTML = html;
     }
     
     function showError(error) {
-        document.getElementById('mainTitle').textContent = '🚨 取得エラー';
+        document.getElementById('mainTitle').textContent = '🚨 データ取得エラー';
         document.getElementById('scheduleTable').innerHTML = `<p>${error.message}</p>`;
     }
 </script>
