@@ -20,9 +20,13 @@
     th, td { border: 1px solid #ccc; padding: 8px; text-align: center; font-size: 10pt; white-space: nowrap; } 
     th { background-color: #e0e0e0; position: sticky; top: 0; z-index: 10; } 
     .name-cell { text-align: left; font-weight: bold; }
-    .vacation-cell { background-color: #ffdddd; font-weight: bold; } 
+
+    /* 🌟 色の定義（CSS） */
+    .vacation-cell { background-color: #ffdddd; font-weight: bold; } /* / の色（薄い赤） */
+    .batsu-cell { background-color: #eee0ff; font-weight: bold; }    /* × の色（薄い紫） */
+    .paid-holiday-cell { background-color: #d0f0d0; font-weight: bold; } /* 有休の色（薄い緑） */
+
     .date-row th { background-color: #cccccc; padding-top: 4px; padding-bottom: 4px; }
-    /* 最下行（集計行）の強調スタイル */
     .footer-row { background-color: #f0f0f0; font-weight: bold; }
 </style>
 </head>
@@ -58,16 +62,12 @@
         document.getElementById('reloadButton').addEventListener('click', fetchDataAndDisplay);
     };
 
-    /**
-     * 【デバッグ版】引用符と改行を考慮した堅牢なCSVパース
-     */
     async function fetchDataFromCSV(url) {
         try {
             const response = await fetch(url + (url.indexOf('?') > -1 ? '&t=' : '?t=') + Date.now());
             if (!response.ok) throw new Error(`HTTPエラー: ${response.status}`);
             const csvText = await response.text();
 
-            // 🌟 改行と引用符を正しく処理するロジック
             const rows = [];
             let currentRow = [];
             let currentCell = '';
@@ -78,7 +78,7 @@
                 const nextChar = csvText[i + 1];
 
                 if (char === '"' && inQuotes && nextChar === '"') {
-                    currentCell += '"'; i++; // エスケープされた引用符
+                    currentCell += '"'; i++; 
                 } else if (char === '"') {
                     inQuotes = !inQuotes;
                 } else if (char === ',' && !inQuotes) {
@@ -101,18 +101,14 @@
 
             if (rows.length < 6) return { error: 'データ構造が正しくありません。' };
 
-            // タイトル取得 (B1セル)
             let monthValue = rows[0][1] || "不明な月度";
-
-            // ヘッダー (4行目と5行目) A列から全列取得
             const dateHeader = rows[3]; 
             const header = rows[4]; 
             
-            // データ本体 (6行目以降)
             const allBodyRows = rows.slice(5);
             const filteredBody = allBodyRows.filter((row, index) => {
-                const isLastRow = (index === allBodyRows.length - 1); // 最終行（集計行）
-                const hasAColumnData = (row[0] && row[0] !== '');   // A列にデータがある
+                const isLastRow = (index === allBodyRows.length - 1);
+                const hasAColumnData = (row[0] && row[0] !== '');
                 return hasAColumnData || isLastRow;
             });
 
@@ -139,20 +135,28 @@
         html += '</tr></thead><tbody>';
         
         scheduleData.data.forEach((row, rowIndex) => {
-            // 最終行（集計行）かどうかの判定
             const isFooter = (rowIndex === scheduleData.data.length - 1);
             const rowClass = isFooter ? ' class="footer-row"' : '';
 
             html += `<tr${rowClass}>`;
             row.forEach((cell, cellIndex) => {
-                // セル内の改行をHTMLの改行コードに変換
-                const cellTextStr = cell.toString().replace(/\n/g, '<br>');
+                const cellTextStr = cell.toString();
+                const cellDisplayStr = cellTextStr.replace(/\n/g, '<br>');
                 
-                if (cellIndex === 1) { // B列（名前）
-                    html += `<td class="name-cell">${cellTextStr}</td>`;
+                if (cellIndex === 1) {
+                    html += `<td class="name-cell">${cellDisplayStr}</td>`;
                 } else {
-                    const cellClass = (cellTextStr === '/') ? ' class="vacation-cell"' : ''; 
-                    html += `<td${cellClass}>${cellTextStr}</td>`; 
+                    // 🌟 文字列に応じたクラスの判定（JavaScript）
+                    let cellClass = '';
+                    if (cellTextStr === '/') {
+                        cellClass = ' class="vacation-cell"';
+                    } else if (cellTextStr === '×') {
+                        cellClass = ' class="batsu-cell"';
+                    } else if (cellTextStr === '有休') {
+                        cellClass = ' class="paid-holiday-cell"';
+                    }
+
+                    html += `<td${cellClass}>${cellDisplayStr}</td>`; 
                 }
             });
             html += '</tr>';
