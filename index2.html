@@ -4,10 +4,8 @@
 <meta charset="UTF-8">
 <title>スケジュール確認</title>
 <style>
-    /* ページの表示を整えるためのCSS */
     body { font-family: sans-serif; margin: 20px; }
     h1 { color: #333; }
-    /* 更新ボタンのスタイル */
     #reloadButton {
         padding: 10px 20px;
         font-size: 16px;
@@ -18,19 +16,14 @@
         border: none;
         border-radius: 5px;
     }
-    table { border-collapse: collapse; width: 100%; max-width: 1200px; margin: 20px 0; }
-    th, td { border: 1px solid #ccc; padding: 8px; text-align: center; font-size: 11pt; white-space: nowrap; } 
-    /* ヘッダー固定 */
+    table { border-collapse: collapse; width: 100%; max-width: 1800px; margin: 20px 0; }
+    th, td { border: 1px solid #ccc; padding: 8px; text-align: center; font-size: 10pt; white-space: nowrap; } 
     th { background-color: #e0e0e0; position: sticky; top: 0; z-index: 10; } 
-    .name-cell { text-align: left; font-weight: bold; } /* 氏名セル */
-    /* 休み（/）のセルを強調 */
+    .name-cell { text-align: left; font-weight: bold; }
     .vacation-cell { background-color: #ffdddd; font-weight: bold; } 
-    /* 日付行のヘッダー色 */
-    .date-row th { 
-        background-color: #cccccc; 
-        padding-top: 4px; 
-        padding-bottom: 4px;
-    } 
+    .date-row th { background-color: #cccccc; padding-top: 4px; padding-bottom: 4px; }
+    /* 最下行（集計行）の強調スタイル */
+    .footer-row { background-color: #f0f0f0; font-weight: bold; }
 </style>
 </head>
 <body>
@@ -41,7 +34,6 @@
     <div id="scheduleTable">データを読み込み中...</div>
 
 <script>
-    // 🌟 【更新】現在の正しいCSV形式のURL
     const PUBLIC_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQaYJphnZhb8HkeovOamN2R_LJ9GImdQr8fD_uRqWyFJ0N_JJi3okCjunHA1aFGajXz9MykXYRZYS4K/pub?gid=0&single=true&output=csv'; 
     
     function fetchDataAndDisplay() {
@@ -57,7 +49,7 @@
                 }
             })
             .catch(error => {
-                showError({ message: `データの読み込みに失敗しました: ${error.message}` });
+                showError({ message: `通信エラー: ${error.message}` });
             });
     }
 
@@ -67,47 +59,72 @@
     };
 
     /**
-     * 成功コードをベースに、列の開始位置(B列)のみを調整した関数
+     * 【デバッグ版】引用符と改行を考慮した堅牢なCSVパース
      */
     async function fetchDataFromCSV(url) {
         try {
-            // キャッシュ対策を追加
             const response = await fetch(url + (url.indexOf('?') > -1 ? '&t=' : '?t=') + Date.now());
-            if (!response.ok) {
-                throw new Error(`HTTPエラー: ${response.status}`);
-            }
+            if (!response.ok) throw new Error(`HTTPエラー: ${response.status}`);
             const csvText = await response.text();
 
-            // 成功コードと同一のパース処理
-            const rows = csvText.trim().split('\n').map(row => row.split(','));
-            
-            if (rows.length < 6) {
-                return { error: 'CSVデータの行数が足りません。' };
+            // 🌟 改行と引用符を正しく処理するロジック
+            const rows = [];
+            let currentRow = [];
+            let currentCell = '';
+            let inQuotes = false;
+
+            for (let i = 0; i < csvText.length; i++) {
+                const char = csvText[i];
+                const nextChar = csvText[i + 1];
+
+                if (char === '"' && inQuotes && nextChar === '"') {
+                    currentCell += '"'; i++; // エスケープされた引用符
+                } else if (char === '"') {
+                    inQuotes = !inQuotes;
+                } else if (char === ',' && !inQuotes) {
+                    currentRow.push(currentCell.trim());
+                    currentCell = '';
+                } else if ((char === '\r' || char === '\n') && !inQuotes) {
+                    if (char === '\r' && nextChar === '\n') i++;
+                    currentRow.push(currentCell.trim());
+                    rows.push(currentRow);
+                    currentRow = [];
+                    currentCell = '';
+                } else {
+                    currentCell += char;
+                }
+            }
+            if (currentRow.length > 0) {
+                currentRow.push(currentCell.trim());
+                rows.push(currentRow);
             }
 
-            // B1 (rows[0][1]) が月度。引用符を除去
-            const monthValue = rows[0][1] ? rows[0][1].replace(/"/g, '').trim() : "不明な月"; 
+            if (rows.length < 6) return { error: 'データ構造が正しくありません。' };
 
-            // 【重要】今回のシートに合わせて取得範囲を「B列以降」にスライス
-            // rows[3] は日付。A列(0)を飛ばしてB列(1)から最後まで取得
-            const dateHeader = rows[3].slice(1).map(cell => cell.replace(/"/g, '').trim()); 
-            // rows[4] は曜日・名前。A列(0)を飛ばしてB列(1)から最後まで取得
-            const header = rows[4].slice(1).map(cell => cell.replace(/"/g, '').trim()); 
+            // タイトル取得 (B1セル)
+            let monthValue = rows[0][1] || "不明な月度";
+
+            // ヘッダー (4行目と5行目) A列から全列取得
+            const dateHeader = rows[3]; 
+            const header = rows[4]; 
             
-            // rows.slice(5) がデータ本体。名前があるB列(1)を基準に処理
-            const dataBody = rows.slice(5) 
-                .filter(row => row[1] && row[1].trim() !== '') // B列(名前)が空でない行
-                .map(row => row.slice(1).map(cell => cell.replace(/"/g, '').trim())); // 各行もB列(1)から開始
+            // データ本体 (6行目以降)
+            const allBodyRows = rows.slice(5);
+            const filteredBody = allBodyRows.filter((row, index) => {
+                const isLastRow = (index === allBodyRows.length - 1); // 最終行（集計行）
+                const hasAColumnData = (row[0] && row[0] !== '');   // A列にデータがある
+                return hasAColumnData || isLastRow;
+            });
 
             return {
                 month: monthValue, 
                 dateHeader: dateHeader, 
                 header: header, 
-                data: dataBody 
+                data: filteredBody 
             };
 
         } catch (e) {
-            return { error: `CSVパースエラー: ${e.message}` };
+            return { error: `パースエラー: ${e.message}` };
         }
     }
 
@@ -121,14 +138,20 @@
         scheduleData.header.forEach(h => html += `<th>${h || ''}</th>`);
         html += '</tr></thead><tbody>';
         
-        scheduleData.data.forEach(row => {
-            html += '<tr>';
+        scheduleData.data.forEach((row, rowIndex) => {
+            // 最終行（集計行）かどうかの判定
+            const isFooter = (rowIndex === scheduleData.data.length - 1);
+            const rowClass = isFooter ? ' class="footer-row"' : '';
+
+            html += `<tr${rowClass}>`;
             row.forEach((cell, cellIndex) => {
-                const cellTextStr = cell.toString().replace(/\n/g, '<br>'); // 改行対応のみ追加
-                if (cellIndex === 0) {
+                // セル内の改行をHTMLの改行コードに変換
+                const cellTextStr = cell.toString().replace(/\n/g, '<br>');
+                
+                if (cellIndex === 1) { // B列（名前）
                     html += `<td class="name-cell">${cellTextStr}</td>`;
                 } else {
-                    const cellClass = cellTextStr === '/' ? ' class="vacation-cell"' : ''; 
+                    const cellClass = (cellTextStr === '/') ? ' class="vacation-cell"' : ''; 
                     html += `<td${cellClass}>${cellTextStr}</td>`; 
                 }
             });
@@ -139,7 +162,7 @@
     }
     
     function showError(error) {
-        document.getElementById('mainTitle').textContent = '🚨 データ取得エラー';
+        document.getElementById('mainTitle').textContent = '🚨 エラー発生';
         document.getElementById('scheduleTable').innerHTML = `<p>${error.message}</p>`;
     }
 </script>
