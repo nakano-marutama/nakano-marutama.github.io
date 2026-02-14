@@ -41,12 +41,8 @@
     <div id="scheduleTable">データを読み込み中...</div>
 
 <script>
-    // 🌟 【重要】ウェブに公開したCSV形式のURLに置き換えてください
     const PUBLIC_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSyErOQl5eRjOsCvSthxVrKvFmKhsHhdvlBngpAatcMOC4Cn1NP673R51kNx7QgJFD9t3lx33XOvP8Z/pub?gid=1072672730&single=true&output=csv'; 
     
-    // ----------------------------------------------------------------------
-    // ページロード時とボタンクリック時に実行されるメインの処理を関数化
-    // ----------------------------------------------------------------------
     function fetchDataAndDisplay() {
         document.getElementById('mainTitle').textContent = 'データを読み込み中...';
         document.getElementById('scheduleTable').innerHTML = 'データを読み込み中...';
@@ -64,18 +60,11 @@
             });
     }
 
-    // ページが読み込まれたら、公開 CSV のデータを読み込む
     window.onload = function() {
         fetchDataAndDisplay();
-        
-        // 更新ボタンにイベントリスナーを設定
         document.getElementById('reloadButton').addEventListener('click', fetchDataAndDisplay);
     };
 
-    /**
-     * CSVテキストを正しく配列に変換するプロフェッショナルなパース関数
-     * セル内の改行やカンマ、ダブルクォーテーションに対応
-     */
     function parseCSV(text) {
         const lines = [];
         let inQuotes = false;
@@ -102,92 +91,57 @@
         });
     }
 
-    /**
-     * 公開 CSV URL からデータを取得し、構造化されたオブジェクトに変換する関数
-     */
     async function fetchDataFromCSV(url) {
         try {
             const cacheBuster = url.indexOf('?') > -1 ? `&t=${Date.now()}` : `?t=${Date.now()}`;
             const response = await fetch(url + cacheBuster);
             
             if (!response.ok) {
-                throw new Error(`HTTPエラー: ${response.status} - 公開URLの確認が必要です。`);
+                throw new Error(`HTTPエラー: ${response.status}`);
             }
             const csvText = await response.text();
-
             const rows = parseCSV(csvText);
             
             if (rows.length < 6) {
-                return { error: 'CSVデータが期待される行数に満たないため、パースできませんでした。スプレッドシートが正しく公開されているか確認してください。' };
+                return { error: 'CSVの行数が足りません。' };
             }
 
-            // 【修正】B2セル(rows[1][1])から月度を取得
-            // 文字化け対策として、数字2桁が含まれていればそれを抽出し、強制的に「XX月度」とする
-            let monthVal = "不明な月";
+            // 【最終修正】文字化け対策：B2セル内の「数字」だけを抜き出して「月度」を付与
+            let monthLabel = "不明な月";
             if (rows[1] && rows[1][1]) {
-                const rawVal = rows[1][1];
-                const match = rawVal.match(/\d+/); // 数字だけ抜き出す
-                if (match) {
-                    monthVal = match[0].padStart(2, '0') + "月度";
-                } else {
-                    // 数字がない場合はそのまま（ただしトリミングする）
-                    monthVal = rawVal.split(' ')[0] || "不明な月";
+                const numbersOnly = rows[1][1].replace(/[^0-9]/g, ''); // 数字以外をすべて消去
+                if (numbersOnly) {
+                    // 03などの頭のゼロを維持するために、数字があればそのまま採用
+                    monthLabel = numbersOnly.slice(-2) + "月度"; 
                 }
             }
             
             const dateHeader = rows[4] ? rows[4].map(cell => cell.trim()) : []; 
             const header = rows[5] ? rows[5].map(cell => cell.trim()) : []; 
-            
             const dataBody = rows.slice(6) 
                 .filter(row => row[1] && row[1].trim() !== '')
                 .map(row => row.map(cell => cell.trim()));
 
-            return {
-                month: monthVal, 
-                dateHeader: dateHeader, 
-                header: header, 
-                data: dataBody 
-            };
-
+            return { month: monthLabel, dateHeader: dateHeader, header: header, data: dataBody };
         } catch (e) {
-            return { error: `CSVパース処理中にエラーが発生しました: ${e.message}` };
+            return { error: `エラー: ${e.message}` };
         }
     }
 
-    /**
-     * 取得したデータをHTMLテーブルとして表示する関数
-     */
     function displayData(scheduleData) {
         const tableDiv = document.getElementById('scheduleTable');
-        if (!scheduleData || !scheduleData.data.length) {
-            tableDiv.innerHTML = '<p>表示するデータがありません。</p>';
-            return;
-        }
-        
         document.getElementById('mainTitle').textContent = `${scheduleData.month} 休み希望確認`; 
         
-        let html = '<table><thead>';
+        let html = '<table><thead><tr class="date-row">';
+        scheduleData.dateHeader.forEach(d => html += `<th>${d || ''}</th>`);
+        html += '</tr><tr>';
+        scheduleData.header.forEach(h => html += `<th>${h || ''}</th>`);
+        html += '</tr></thead><tbody>';
         
-        html += '<tr class="date-row">';
-        scheduleData.dateHeader.forEach(d => {
-            const displayValue = d || '';
-            html += `<th>${displayValue}</th>`;
-        });
-        html += '</tr>';
-
-        html += '<tr>';
-        scheduleData.header.forEach(h => {
-            const displayValue = h || '';
-            html += `<th>${displayValue}</th>`;
-        });
-        html += '</tr></thead>';
-        
-        html += '<tbody>';
         scheduleData.data.forEach(row => {
             html += '<tr>';
             row.forEach((cell, cellIndex) => {
                 const cellTextStr = cell.toString().replace(/\n/g, '<br>');
-                
                 if (cellIndex === 0) {
                     html += `<td class="name-cell">${cellTextStr}</td>`;
                 } else {
@@ -198,20 +152,12 @@
             html += '</tr>';
         });
         html += '</tbody></table>';
-
         tableDiv.innerHTML = html;
     }
     
     function showError(error) {
-        document.getElementById('mainTitle').textContent = '🚨 データ取得エラー';
-        document.getElementById('scheduleTable').innerHTML = 
-            `<p style="color: red; font-size: 14pt;">🚨 データ取得エラーが発生しました 🚨</p>
-             <p>以下の点を確認してください:</p>
-             <ul>
-               <li>スプレッドシートが**「ファイル」→「共有」→「ウェブに公開」**で**CSV形式**で公開されているか</li>
-               <li>HTML内の **PUBLIC_CSV_URL** が正しいURLに置き換わっているか</li>
-               <li>エラーメッセージ: ${error.message}</li>
-             </ul>`;
+        document.getElementById('mainTitle').textContent = '🚨 取得エラー';
+        document.getElementById('scheduleTable').innerHTML = `<p>${error.message}</p>`;
     }
 </script>
 </body>
