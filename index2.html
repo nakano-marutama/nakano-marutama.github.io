@@ -73,35 +73,75 @@
     };
 
     /**
+     * CSVテキストを正しく配列に変換するプロフェッショナルなパース関数
+     * セル内の改行やカンマ、ダブルクォーテーションに対応
+     */
+    function parseCSV(text) {
+        const rows = [];
+        // 正規表現: カンマ区切り、ダブルクォーテーション囲みに対応
+        const re = /(?!\s*$)\s*(?:'([^']*)'|"([^"]*)"|([^,\r\n\t]*))\s*(?:,|$)/g;
+        
+        // 行ごとに分割する前に、セル内の改行を保護して処理
+        const lines = [];
+        let currLine = [];
+        let match;
+        
+        // 1文字ずつ走査してダブルクォーテーション内の改行を無視して行分割
+        let inQuotes = false;
+        let start = 0;
+        for (let i = 0; i < text.length; i++) {
+            if (text[i] === '"') inQuotes = !inQuotes;
+            if (!inQuotes && (text.substring(i, i + 1) === '\n' || text.substring(i, i + 2) === '\r\n')) {
+                lines.push(text.substring(start, i));
+                start = i + (text[i] === '\r' ? 2 : 1);
+            }
+        }
+        lines.push(text.substring(start));
+
+        return lines.map(line => {
+            const row = [];
+            let m;
+            while (m = re.exec(line)) {
+                let val = m[1] || m[2] || m[3] || "";
+                row.push(val.trim());
+            }
+            return row;
+        });
+    }
+
+    /**
      * 公開 CSV URL からデータを取得し、構造化されたオブジェクトに変換する関数
      */
     async function fetchDataFromCSV(url) {
         try {
-            const response = await fetch(url);
+            // キャッシュ回避のためにタイムスタンプを付与
+            const cacheBuster = url.indexOf('?') > -1 ? `&t=${Date.now()}` : `?t=${Date.now()}`;
+            const response = await fetch(url + cacheBuster);
+            
             if (!response.ok) {
                 throw new Error(`HTTPエラー: ${response.status} - 公開URLの確認が必要です。`);
             }
             const csvText = await response.text();
 
-            // CSVを行と列に分割（非常にシンプルなパース処理）
-            const rows = csvText.trim().split('\n').map(row => row.split(','));
+            // 堅牢なパース処理を実行
+            const rows = parseCSV(csvText);
             
             if (rows.length < 6) {
                 return { error: 'CSVデータが期待される行数に満たないため、パースできませんでした。スプレッドシートが正しく公開されているか確認してください。' };
             }
 
             // B2 (rows[1][1]) が月度
-            const monthValue = rows[1][1].trim(); 
-            // A5:AF5 (rows[3]) が日付ヘッダー
-            const dateHeader = rows[4].map(cell => cell.trim()); 
-            // A6:AF6 (rows[4]) が曜日ヘッダー
-            const header = rows[5].map(cell => cell.trim()); 
+            const monthValue = (rows[1] && rows[1][1]) ? rows[1][1].trim() : "不明な月"; 
+            // A5:AF5 (rows[4]) が日付ヘッダー
+            const dateHeader = rows[4] ? rows[4].map(cell => cell.trim()) : []; 
+            // A6:AF6 (rows[5]) が曜日ヘッダー
+            const header = rows[5] ? rows[5].map(cell => cell.trim()) : []; 
             
             // A7以降 (rows.slice(6)) がデータ本体
             const dataBody = rows.slice(6) 
                 // 2列目（名前）に文字がある行だけ出す
                 .filter(row => row[1] && row[1].trim() !== '')
-                // 全てのセルをトリミング
+                // 全てのセルをトリミング（セル内改行は維持）
                 .map(row => row.map(cell => cell.trim()));
 
             return {
@@ -152,7 +192,8 @@
         scheduleData.data.forEach(row => {
             html += '<tr>';
             row.forEach((cell, cellIndex) => {
-                const cellTextStr = cell.toString();
+                // セル内の改行をHTMLの改行コードに変換
+                const cellTextStr = cell.toString().replace(/\n/g, '<br>');
                 
                 if (cellIndex === 0) {
                     // 最初の列（名前）
@@ -160,7 +201,7 @@
                 } else {
                     // 2列目以降（シフト情報）
                     // 「/」と完全に一致する場合のみ強調
-                    const cellClass = cellTextStr === '/' ? ' class="vacation-cell"' : ''; 
+                    const cellClass = cell === '/' ? ' class="vacation-cell"' : ''; 
                     html += `<td${cellClass}>${cellTextStr}</td>`; 
                 }
             });
