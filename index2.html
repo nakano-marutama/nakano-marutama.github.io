@@ -77,16 +77,7 @@
      * セル内の改行やカンマ、ダブルクォーテーションに対応
      */
     function parseCSV(text) {
-        const rows = [];
-        // 正規表現: カンマ区切り、ダブルクォーテーション囲みに対応
-        const re = /(?!\s*$)\s*(?:'([^']*)'|"([^"]*)"|([^,\r\n\t]*))\s*(?:,|$)/g;
-        
-        // 行ごとに分割する前に、セル内の改行を保護して処理
         const lines = [];
-        let currLine = [];
-        let match;
-        
-        // 1文字ずつ走査してダブルクォーテーション内の改行を無視して行分割
         let inQuotes = false;
         let start = 0;
         for (let i = 0; i < text.length; i++) {
@@ -98,9 +89,11 @@
         }
         lines.push(text.substring(start));
 
+        const re = /(?!\s*$)\s*(?:'([^']*)'|"([^"]*)"|([^,\r\n\t]*))\s*(?:,|$)/g;
         return lines.map(line => {
             const row = [];
             let m;
+            re.lastIndex = 0; 
             while (m = re.exec(line)) {
                 let val = m[1] || m[2] || m[3] || "";
                 row.push(val.trim());
@@ -114,7 +107,6 @@
      */
     async function fetchDataFromCSV(url) {
         try {
-            // キャッシュ回避のためにタイムスタンプを付与
             const cacheBuster = url.indexOf('?') > -1 ? `&t=${Date.now()}` : `?t=${Date.now()}`;
             const response = await fetch(url + cacheBuster);
             
@@ -123,29 +115,24 @@
             }
             const csvText = await response.text();
 
-            // 堅牢なパース処理を実行
             const rows = parseCSV(csvText);
             
             if (rows.length < 6) {
                 return { error: 'CSVデータが期待される行数に満たないため、パースできませんでした。スプレッドシートが正しく公開されているか確認してください。' };
             }
 
-            // B2 (rows[1][1]) が月度
-            const monthValue = (rows[1] && rows[1][1]) ? rows[1][1].trim() : "不明な月"; 
-            // A5:AF5 (rows[4]) が日付ヘッダー
+            // 【修正箇所】B2(rows[1][1]) の値のみを取得してタイトルに使用
+            let monthVal = (rows[1] && rows[1][1]) ? rows[1][1].trim() : "不明な月";
+            
             const dateHeader = rows[4] ? rows[4].map(cell => cell.trim()) : []; 
-            // A6:AF6 (rows[5]) が曜日ヘッダー
             const header = rows[5] ? rows[5].map(cell => cell.trim()) : []; 
             
-            // A7以降 (rows.slice(6)) がデータ本体
             const dataBody = rows.slice(6) 
-                // 2列目（名前）に文字がある行だけ出す
                 .filter(row => row[1] && row[1].trim() !== '')
-                // 全てのセルをトリミング（セル内改行は維持）
                 .map(row => row.map(cell => cell.trim()));
 
             return {
-                month: monthValue, 
+                month: monthVal, 
                 dateHeader: dateHeader, 
                 header: header, 
                 data: dataBody 
@@ -166,12 +153,10 @@
             return;
         }
         
-        // タイトルを更新 (B2セルの値を使用)
         document.getElementById('mainTitle').textContent = `${scheduleData.month} 休み希望確認`; 
         
         let html = '<table><thead>';
         
-        // 日付ヘッダー行 (A5から取得したデータ)
         html += '<tr class="date-row">';
         scheduleData.dateHeader.forEach(d => {
             const displayValue = d || '';
@@ -179,7 +164,6 @@
         });
         html += '</tr>';
 
-        // 曜日ヘッダー行（氏名 + 曜日）の生成 (A5から取得したデータ)
         html += '<tr>';
         scheduleData.header.forEach(h => {
             const displayValue = h || '';
@@ -187,20 +171,15 @@
         });
         html += '</tr></thead>';
         
-        // データ行の生成
         html += '<tbody>';
         scheduleData.data.forEach(row => {
             html += '<tr>';
             row.forEach((cell, cellIndex) => {
-                // セル内の改行をHTMLの改行コードに変換
                 const cellTextStr = cell.toString().replace(/\n/g, '<br>');
                 
                 if (cellIndex === 0) {
-                    // 最初の列（名前）
                     html += `<td class="name-cell">${cellTextStr}</td>`;
                 } else {
-                    // 2列目以降（シフト情報）
-                    // 「/」と完全に一致する場合のみ強調
                     const cellClass = cell === '/' ? ' class="vacation-cell"' : ''; 
                     html += `<td${cellClass}>${cellTextStr}</td>`; 
                 }
@@ -212,9 +191,6 @@
         tableDiv.innerHTML = html;
     }
     
-    /**
-     * データの取得に失敗した場合にエラーを表示する関数
-     */
     function showError(error) {
         document.getElementById('mainTitle').textContent = '🚨 データ取得エラー';
         document.getElementById('scheduleTable').innerHTML = 
