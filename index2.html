@@ -41,8 +41,8 @@
     <div id="scheduleTable">データを読み込み中...</div>
 
 <script>
-    // 🌟 【重要】ウェブに公開したCSV形式のURL
-    const PUBLIC_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSyErOQl5eRjOsCvSthxVrKvFmKhsHhdvlBngpAatcMOC4Cn1NP673R51kNx7QgJFD9t3lx33XOvP8Z/pub?gid=1072672730&single=true&output=csv'; 
+    // 🌟 【更新】正しいCSV形式のURL
+    const PUBLIC_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQaYJphnZhb8HkeovOamN2R_LJ9GImdQr8fD_uRqWyFJ0N_JJi3okCjunHA1aFGajXz9MykXYRZYS4K/pub?gid=0&single=true&output=csv'; 
     
     function fetchDataAndDisplay() {
         document.getElementById('mainTitle').textContent = 'データを読み込み中...';
@@ -67,11 +67,10 @@
     };
 
     /**
-     * CSVデータを取得し、スクショ2の成功ロジックをベースに解析する関数
+     * CSVデータを取得し解析する関数
      */
     async function fetchDataFromCSV(url) {
         try {
-            // キャッシュ回避
             const cacheBuster = url.indexOf('?') > -1 ? `&t=${Date.now()}` : `?t=${Date.now()}`;
             const response = await fetch(url + cacheBuster);
             
@@ -80,34 +79,30 @@
             }
             const csvText = await response.text();
 
-            // スクショ2と同じシンプルな行分割を採用
+            // シンプルな行・列分割（スクショ2の成功方式）
             const rows = csvText.trim().split('\n').map(row => row.split(','));
             
             if (rows.length < 6) {
                 return { error: 'CSVデータの行数が足りません。' };
             }
 
-            // 【修正】スクショ2の構造に合わせ、B1セル(rows[0][1])から月度を取得
-            // ただし、もし空ならB2セル(rows[1][1])を予備で見に行く
+            // 【修正】1行目(rows[0])のB列([1])から月度を取得
             let monthValue = "不明な月";
-            if (rows[0] && rows[0][1] && rows[0][1].trim() !== "") {
-                monthValue = rows[0][1].trim();
-            } else if (rows[1] && rows[1][1] && rows[1][1].trim() !== "") {
-                monthValue = rows[1][1].trim();
-            }
-
-            // タイトル内の文字化け記号を除去して「XX月度」の形に整える
-            const match = monthValue.match(/\d+/);
-            if (match) {
-                monthValue = match[0].padStart(2, '0') + "月度";
+            if (rows[0] && rows[0][1]) {
+                const rawVal = rows[0][1].trim();
+                // 数字だけ抜き出して「XX月度」に整形（文字化け対策）
+                const match = rawVal.match(/\d+/);
+                monthValue = match ? match[0].padStart(2, '0') + "月度" : rawVal.replace(/"/g, '');
             }
             
-            const dateHeader = rows[4] ? rows[4].map(cell => cell.trim()) : []; 
-            const header = rows[5] ? rows[5].map(cell => cell.trim()) : []; 
+            // 日付・曜日ヘッダー（行数は元の構造を維持）
+            const dateHeader = rows[3] ? rows[3].map(cell => cell.trim().replace(/"/g, '')) : []; 
+            const header = rows[4] ? rows[4].map(cell => cell.trim().replace(/"/g, '')) : []; 
             
-            const dataBody = rows.slice(6) 
-                .filter(row => row[1] && row[1].trim() !== '')
-                .map(row => row.map(cell => cell.trim()));
+            // データ本体
+            const dataBody = rows.slice(5) 
+                .filter(row => row[0] && row[0].trim() !== '')
+                .map(row => row.map(cell => cell.trim().replace(/"/g, '')));
 
             return {
                 month: monthValue, 
@@ -123,24 +118,18 @@
 
     function displayData(scheduleData) {
         const tableDiv = document.getElementById('scheduleTable');
-        
         document.getElementById('mainTitle').textContent = `${scheduleData.month} 休み希望確認`; 
         
         let html = '<table><thead><tr class="date-row">';
-        scheduleData.dateHeader.forEach(d => {
-            html += `<th>${d || ''}</th>`;
-        });
+        scheduleData.dateHeader.forEach(d => html += `<th>${d || ''}</th>`);
         html += '</tr><tr>';
-        scheduleData.header.forEach(h => {
-            html += `<th>${h || ''}</th>`;
-        });
+        scheduleData.header.forEach(h => html += `<th>${h || ''}</th>`);
         html += '</tr></thead><tbody>';
         
         scheduleData.data.forEach(row => {
             html += '<tr>';
             row.forEach((cell, cellIndex) => {
-                const cellTextStr = cell.toString().replace(/\n/g, '<br>').replace(/"/g, '');
-                
+                const cellTextStr = cell.toString().replace(/\n/g, '<br>');
                 if (cellIndex === 0) {
                     html += `<td class="name-cell">${cellTextStr}</td>`;
                 } else {
@@ -151,7 +140,6 @@
             html += '</tr>';
         });
         html += '</tbody></table>';
-
         tableDiv.innerHTML = html;
     }
     
