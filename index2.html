@@ -121,8 +121,19 @@
                 return { error: 'CSVデータが期待される行数に満たないため、パースできませんでした。スプレッドシートが正しく公開されているか確認してください。' };
             }
 
-            // 【修正箇所】B2(rows[1][1]) の値のみを取得してタイトルに使用
-            let monthVal = (rows[1] && rows[1][1]) ? rows[1][1].trim() : "不明な月";
+            // 【修正】B2セル(rows[1][1])から月度を取得
+            // 文字化け対策として、数字2桁が含まれていればそれを抽出し、強制的に「XX月度」とする
+            let monthVal = "不明な月";
+            if (rows[1] && rows[1][1]) {
+                const rawVal = rows[1][1];
+                const match = rawVal.match(/\d+/); // 数字だけ抜き出す
+                if (match) {
+                    monthVal = match[0].padStart(2, '0') + "月度";
+                } else {
+                    // 数字がない場合はそのまま（ただしトリミングする）
+                    monthVal = rawVal.split(' ')[0] || "不明な月";
+                }
+            }
             
             const dateHeader = rows[4] ? rows[4].map(cell => cell.trim()) : []; 
             const header = rows[5] ? rows[5].map(cell => cell.trim()) : []; 
