@@ -18,11 +18,11 @@
         border: none;
         border-radius: 5px;
     }
-    table { border-collapse: collapse; width: 100%; max-width: 1200px; margin: 20px 0; }
-    th, td { border: 1px solid #ccc; padding: 8px; text-align: center; font-size: 11pt; white-space: nowrap; } 
+    table { border-collapse: collapse; width: 100%; max-width: 1500px; margin: 20px 0; }
+    th, td { border: 1px solid #ccc; padding: 6px; text-align: center; font-size: 10pt; white-space: nowrap; } 
     /* ヘッダー固定 */
     th { background-color: #e0e0e0; position: sticky; top: 0; z-index: 10; } 
-    .name-cell { text-align: left; font-weight: bold; } /* 氏名セル */
+    .name-cell { text-align: left; font-weight: bold; background-color: #f9f9f9; } /* 氏名セル */
     /* 休み（/）のセルを強調 */
     .vacation-cell { background-color: #ffdddd; font-weight: bold; } 
     /* 日付行のヘッダー色 */
@@ -41,117 +41,99 @@
     <div id="scheduleTable">データを読み込み中...</div>
 
 <script>
-    // 🌟 【更新】新しいCSV形式のURL
+    // 🌟 正しいCSV形式のURL
     const PUBLIC_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQaYJphnZhb8HkeovOamN2R_LJ9GImdQr8fD_uRqWyFJ0N_JJi3okCjunHA1aFGajXz9MykXYRZYS4K/pub?gid=0&single=true&output=csv'; 
     
     function fetchDataAndDisplay() {
         document.getElementById('mainTitle').textContent = 'データを読み込み中...';
         document.getElementById('scheduleTable').innerHTML = 'データを読み込み中...';
         
-        fetchDataFromCSV(PUBLIC_CSV_URL)
-            .then(data => {
-                if (data.error) {
-                    showError({ message: data.error });
-                } else {
-                    displayData(data);
+        fetch(PUBLIC_CSV_URL + '?t=' + Date.now())
+            .then(res => res.text())
+            .then(csvText => {
+                // CSVを行と列に分割（引用符を削除）
+                const rows = csvText.trim().split('\n').map(row => 
+                    row.split(',').map(cell => cell.replace(/^"|"$/g, '').trim())
+                );
+                
+                if (rows.length < 5) {
+                    showError({ message: 'CSVデータの行数が足りません。' });
+                    return;
                 }
+
+                // 【月度の取得】1行目のどこかに含まれる数字を探す
+                let monthLabel = "不明な月";
+                const firstRowCombined = rows[0].join('');
+                const m = firstRowCombined.match(/\d+/);
+                if (m) {
+                    monthLabel = m[0].padStart(2, '0') + "月度";
+                }
+
+                // 【名前列の特定】5行目(index 4)から "名前" を探す
+                let nameColIndex = 1; // 見つからない場合はB列(1)をデフォルトにする
+                for (let i = 0; i < rows[4].length; i++) {
+                    if (rows[4][i] === "名前") {
+                        nameColIndex = i;
+                        break;
+                    }
+                }
+
+                // 【ヘッダーとデータの抽出】名前列を起点に抽出
+                const dateHeader = rows[3].slice(nameColIndex); // 4行目（日付）
+                const dayHeader = rows[4].slice(nameColIndex);  // 5行目（曜日/名前）
+                
+                // 6行目以降から名前が入っている行だけを抽出
+                const bodyData = rows.slice(5)
+                    .filter(row => row[nameColIndex] && row[nameColIndex] !== "");
+
+                displayData(monthLabel, dateHeader, dayHeader, bodyData, nameColIndex);
             })
             .catch(error => {
                 showError({ message: `データの読み込みに失敗しました: ${error.message}` });
             });
     }
 
-    window.onload = function() {
-        fetchDataAndDisplay();
-        document.getElementById('reloadButton').addEventListener('click', fetchDataAndDisplay);
-    };
-
-    /**
-     * CSVデータを取得し解析する関数
-     */
-    async function fetchDataFromCSV(url) {
-        try {
-            const cacheBuster = url.indexOf('?') > -1 ? `&t=${Date.now()}` : `?t=${Date.now()}`;
-            const response = await fetch(url + cacheBuster);
-            
-            if (!response.ok) {
-                throw new Error(`HTTPエラー: ${response.status}`);
-            }
-            const csvText = await response.text();
-
-            // スクショ2で成功した分割ロジックをベースに、ダブルクォーテーションを適切に処理
-            const rows = csvText.trim().split('\n').map(row => {
-                // カンマ分割するが、セル内の引用符を削除
-                return row.split(',').map(cell => cell.replace(/^"|"$/g, '').trim());
-            });
-            
-            if (rows.length < 6) {
-                return { error: 'CSVデータの行数が足りません。' };
-            }
-
-            // 【月度】1行目(rows[0])のB列([1])
-            let monthValue = "不明な月";
-            if (rows[0] && rows[0][1]) {
-                const match = rows[0][1].match(/\d+/);
-                monthValue = match ? match[0].padStart(2, '0') + "月度" : rows[0][1];
-            }
-            
-            // 【ヘッダー】日付は4行目、曜日は5行目（インデックスは3と4）
-            const dateHeader = rows[3] || [];
-            const header = rows[4] || []; 
-            
-            // 【データ本体】6行目(インデックス5)以降
-            const dataBody = rows.slice(5) 
-                .filter(row => row[0] && row[0] !== '') // 1列目（職種や名前）がある行のみ
-                .map(row => row);
-
-            return {
-                month: monthValue, 
-                dateHeader: dateHeader, 
-                header: header, 
-                data: dataBody 
-            };
-
-        } catch (e) {
-            return { error: `CSVパースエラー: ${e.message}` };
-        }
-    }
-
-    function displayData(scheduleData) {
-        const tableDiv = document.getElementById('scheduleTable');
-        document.getElementById('mainTitle').textContent = `${scheduleData.month} 休み希望確認`; 
+    function displayData(month, dates, days, data, nameIdx) {
+        document.getElementById('mainTitle').textContent = `${month} 休み希望確認`; 
         
         let html = '<table><thead><tr class="date-row">';
         // 日付行
-        scheduleData.dateHeader.forEach(d => html += `<th>${d || ''}</th>`);
+        dates.forEach(d => html += `<th>${d || ''}</th>`);
         html += '</tr><tr>';
-        // 曜日/項目行
-        scheduleData.header.forEach(h => html += `<th>${h || ''}</th>`);
+        // 曜日・名前行
+        days.forEach(h => html += `<th>${h || ''}</th>`);
         html += '</tr></thead><tbody>';
         
-        // データ行
-        scheduleData.data.forEach(row => {
+        // データ本体
+        data.forEach(row => {
             html += '<tr>';
-            row.forEach((cell, cellIndex) => {
-                const cellTextStr = cell.toString().replace(/\n/g, '<br>');
-                // 名前列の判定（2列目であることが多いためcellIndex === 1）
-                if (cellIndex === 1) {
-                    html += `<td class="name-cell">${cellTextStr}</td>`;
+            // 名前列から後ろだけを表示
+            const displayCells = row.slice(nameIdx);
+            displayCells.forEach((cell, i) => {
+                const cellText = cell.replace(/\n/g, '<br>');
+                if (i === 0) {
+                    // 1つ目のセルは「名前」
+                    html += `<td class="name-cell">${cellText}</td>`;
                 } else {
-                    const cellClass = cellTextStr === '/' ? ' class="vacation-cell"' : ''; 
-                    html += `<td${cellClass}>${cellTextStr}</td>`; 
+                    // 2つ目以降はスケジュール（/ を強調）
+                    const cellClass = cell === '/' ? ' class="vacation-cell"' : ''; 
+                    html += `<td${cellClass}>${cellText}</td>`; 
                 }
             });
             html += '</tr>';
         });
         html += '</tbody></table>';
-        tableDiv.innerHTML = html;
+
+        document.getElementById('scheduleTable').innerHTML = html;
     }
-    
+
     function showError(error) {
         document.getElementById('mainTitle').textContent = '🚨 データ取得エラー';
         document.getElementById('scheduleTable').innerHTML = `<p>${error.message}</p>`;
     }
+
+    window.onload = fetchDataAndDisplay;
+    document.getElementById('reloadButton').addEventListener('click', fetchDataAndDisplay);
 </script>
 </body>
 </html>
