@@ -41,7 +41,7 @@
     <div id="scheduleTable">データを読み込み中...</div>
 
 <script>
-    // 🌟 【更新】正しいCSV形式のURL
+    // 🌟 【更新】新しいCSV形式のURL
     const PUBLIC_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQaYJphnZhb8HkeovOamN2R_LJ9GImdQr8fD_uRqWyFJ0N_JJi3okCjunHA1aFGajXz9MykXYRZYS4K/pub?gid=0&single=true&output=csv'; 
     
     function fetchDataAndDisplay() {
@@ -79,30 +79,31 @@
             }
             const csvText = await response.text();
 
-            // シンプルな行・列分割（スクショ2の成功方式）
-            const rows = csvText.trim().split('\n').map(row => row.split(','));
+            // スクショ2で成功した分割ロジックをベースに、ダブルクォーテーションを適切に処理
+            const rows = csvText.trim().split('\n').map(row => {
+                // カンマ分割するが、セル内の引用符を削除
+                return row.split(',').map(cell => cell.replace(/^"|"$/g, '').trim());
+            });
             
             if (rows.length < 6) {
                 return { error: 'CSVデータの行数が足りません。' };
             }
 
-            // 【修正】1行目(rows[0])のB列([1])から月度を取得
+            // 【月度】1行目(rows[0])のB列([1])
             let monthValue = "不明な月";
             if (rows[0] && rows[0][1]) {
-                const rawVal = rows[0][1].trim();
-                // 数字だけ抜き出して「XX月度」に整形（文字化け対策）
-                const match = rawVal.match(/\d+/);
-                monthValue = match ? match[0].padStart(2, '0') + "月度" : rawVal.replace(/"/g, '');
+                const match = rows[0][1].match(/\d+/);
+                monthValue = match ? match[0].padStart(2, '0') + "月度" : rows[0][1];
             }
             
-            // 日付・曜日ヘッダー（行数は元の構造を維持）
-            const dateHeader = rows[3] ? rows[3].map(cell => cell.trim().replace(/"/g, '')) : []; 
-            const header = rows[4] ? rows[4].map(cell => cell.trim().replace(/"/g, '')) : []; 
+            // 【ヘッダー】日付は4行目、曜日は5行目（インデックスは3と4）
+            const dateHeader = rows[3] || [];
+            const header = rows[4] || []; 
             
-            // データ本体
+            // 【データ本体】6行目(インデックス5)以降
             const dataBody = rows.slice(5) 
-                .filter(row => row[0] && row[0].trim() !== '')
-                .map(row => row.map(cell => cell.trim().replace(/"/g, '')));
+                .filter(row => row[0] && row[0] !== '') // 1列目（職種や名前）がある行のみ
+                .map(row => row);
 
             return {
                 month: monthValue, 
@@ -121,16 +122,20 @@
         document.getElementById('mainTitle').textContent = `${scheduleData.month} 休み希望確認`; 
         
         let html = '<table><thead><tr class="date-row">';
+        // 日付行
         scheduleData.dateHeader.forEach(d => html += `<th>${d || ''}</th>`);
         html += '</tr><tr>';
+        // 曜日/項目行
         scheduleData.header.forEach(h => html += `<th>${h || ''}</th>`);
         html += '</tr></thead><tbody>';
         
+        // データ行
         scheduleData.data.forEach(row => {
             html += '<tr>';
             row.forEach((cell, cellIndex) => {
                 const cellTextStr = cell.toString().replace(/\n/g, '<br>');
-                if (cellIndex === 0) {
+                // 名前列の判定（2列目であることが多いためcellIndex === 1）
+                if (cellIndex === 1) {
                     html += `<td class="name-cell">${cellTextStr}</td>`;
                 } else {
                     const cellClass = cellTextStr === '/' ? ' class="vacation-cell"' : ''; 
